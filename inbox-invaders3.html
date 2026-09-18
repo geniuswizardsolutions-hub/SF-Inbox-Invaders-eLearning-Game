@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inbox Invaders — Shield Grid Defense</title>
+<style>
+  :root{
+    --bg-deep:#120C1F;
+    --bg-panel:#1C1533;
+    --bg-panel-2:#251C42;
+    --gold:#F4C542;
+    --gold-dim:#8a6f1f;
+    --cyan:#4DE8E0;
+    --red:#FF5C4D;
+    --green:#59D97A;
+    --cream:#F3EEDD;
+    --dim:#9088B0;
+    --pixel-border:#0A0713;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;
+    padding:0;
+    background:var(--bg-deep);
+    font-family:'Courier New', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+    color:var(--cream);
+    min-height:100%;
+  }
+  .stage{
+    max-width:680px;
+    margin:0 auto;
+    padding:18px 14px 40px;
+  }
+  .cabinet{
+    background:var(--bg-panel);
+    border:4px solid var(--pixel-border);
+    box-shadow:
+      0 0 0 3px var(--gold-dim),
+      0 10px 0 var(--pixel-border),
+      0 12px 24px rgba(0,0,0,0.6);
+    position:relative;
+    overflow:hidden;
+  }
+  .scanlines{
+    pointer-events:none;
+    position:absolute;
+    inset:0;
+    background:repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,0.035) 0px,
+      rgba(255,255,255,0.035) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    mix-blend-mode:overlay;
+    z-index:5;
+  }
+
+  .hud{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:9px 14px;
+    background:var(--bg-panel-2);
+    border-bottom:3px solid var(--pixel-border);
+    font-size:11px;
+    letter-spacing:0.5px;
+  }
+  .hud-block{display:flex; flex-direction:column; gap:4px;}
+  .hud-label{color:var(--dim); font-size:9px;}
+  .hud-value{color:var(--gold); font-size:13px;}
+  .hud-mid{text-align:center;}
+  .shield-track{
+    width:110px;
+    height:10px;
+    background:var(--pixel-border);
+    border:2px solid var(--pixel-border);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08);
+  }
+  .shield-fill{
+    height:100%;
+    background:linear-gradient(90deg, var(--cyan), var(--green));
+    width:60%;
+    transition:width 0.4s steps(6);
+  }
+  .shield-fill.warn{background:linear-gradient(90deg, var(--gold), var(--red));}
+
+  .battle-wrap{
+    background:#0A0616;
+    border-bottom:3px solid var(--pixel-border);
+    position:relative;
+  }
+  .ship-tag-bar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:8px 12px;
+    font-size:10px;
+    letter-spacing:0.5px;
+    min-height:34px;
+  }
+  .ship-tag-name{color:var(--cream); font-size:11px;}
+  .ship-tag-sub{color:var(--dim); font-size:9px; margin-top:2px;}
+  .iff{
+    color:var(--red);
+    animation:blink 1s steps(2) infinite;
+    font-size:10px;
+    border:1px solid var(--red);
+    padding:2px 6px;
+  }
+  #battleCanvas{
+    display:block;
+    width:100%;
+    height:210px;
+    image-rendering:pixelated;
+  }
+  @keyframes blink{ 50%{opacity:0.3;} }
+
+  .decision-row{
+    display:flex;
+    gap:10px;
+    padding:12px;
+    background:var(--bg-panel-2);
+  }
+  .decision-btn{
+    flex:1;
+    font-family:inherit;
+    font-size:12px;
+    line-height:1.4;
+    padding:12px 10px;
+    border:3px solid var(--pixel-border);
+    box-shadow:0 4px 0 var(--pixel-border);
+    cursor:pointer;
+    text-align:center;
+    white-space:pre-line;
+  }
+  .decision-btn.allow{ background:var(--gold); color:var(--pixel-border); font-weight:bold; }
+  .decision-btn.hold{ background:var(--bg-panel); color:var(--cyan); }
+  .decision-btn:disabled{ opacity:0.4; cursor:default; }
+  .decision-btn:not(:disabled):active{ transform:translateY(4px); box-shadow:0 0 0 var(--pixel-border); }
+
+  .screen{
+    padding:16px 16px 18px;
+    min-height:180px;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    position:relative;
+  }
+  .scene-title{
+    font-size:12px;
+    color:var(--gold);
+    letter-spacing:1px;
+    margin:0 0 12px;
+    border-bottom:2px dashed var(--gold-dim);
+    padding-bottom:8px;
+  }
+  .msg-box{
+    background:var(--bg-panel-2);
+    border:3px solid var(--pixel-border);
+    box-shadow:0 4px 0 var(--pixel-border);
+    padding:12px 14px 14px;
+    margin-bottom:14px;
+  }
+  .msg-text{
+    font-size:13px;
+    line-height:1.6;
+    color:var(--cream);
+  }
+  .progress-dots{
+    display:flex;
+    gap:6px;
+    margin-bottom:12px;
+  }
+  .dot{
+    width:9px; height:9px;
+    border:2px solid var(--dim);
+    background:transparent;
+  }
+  .dot.done{ background:var(--gold); border-color:var(--gold); }
+  .dot.current{ border-color:var(--cyan); }
+
+  .feedback{
+    margin-top:2px;
+    padding:12px 14px;
+    border-left:5px solid var(--dim);
+    background:var(--bg-panel-2);
+    font-size:13px;
+    line-height:1.6;
+  }
+  .feedback.good{border-color:var(--green);}
+  .feedback.bad{border-color:var(--red);}
+  .feedback.mid{border-color:var(--gold);}
+  .feedback p{margin:0; color:var(--cream);}
+  .feedback .verdict{font-weight:bold; margin-bottom:6px;}
+  .feedback .verdict.good{color:var(--green);}
+  .feedback .verdict.bad{color:var(--red);}
+  .feedback .verdict.mid{color:var(--gold);}
+
+  .continue-row{
+    margin-top:14px;
+    display:flex;
+    justify-content:flex-end;
+  }
+  .next-btn{
+    background:var(--gold);
+    color:var(--pixel-border);
+    border:3px solid var(--pixel-border);
+    box-shadow:0 4px 0 var(--pixel-border);
+    font-family:inherit;
+    font-weight:bold;
+    font-size:13px;
+    padding:10px 18px;
+    cursor:pointer;
+  }
+  .next-btn:active{ transform:translateY(4px); box-shadow:0 0 0 var(--pixel-border); }
+
+  .title-screen, .intro-screen{
+    text-align:center;
+    padding:30px 10px 10px;
+  }
+  .game-title{
+    font-size:26px;
+    color:var(--gold);
+    letter-spacing:3px;
+    margin:0 0 6px;
+    text-shadow:3px 3px 0 var(--pixel-border);
+  }
+  .game-sub{
+    font-size:12px;
+    color:var(--cyan);
+    letter-spacing:1px;
+    margin:0 0 22px;
+  }
+  .title-blurb{
+    font-size:13px;
+    line-height:1.8;
+    color:var(--dim);
+    max-width:420px;
+    margin:0 auto 26px;
+    text-align:left;
+  }
+  .title-blurb b{color:var(--cream);}
+  .start-btn{
+    background:var(--gold);
+    color:var(--pixel-border);
+    border:3px solid var(--pixel-border);
+    box-shadow:0 5px 0 var(--pixel-border);
+    font-family:inherit;
+    font-weight:bold;
+    font-size:14px;
+    letter-spacing:2px;
+    padding:14px 26px;
+    cursor:pointer;
+    animation:blink 1.6s steps(2) infinite;
+  }
+  .start-btn:active{ transform:translateY(5px); box-shadow:0 0 0 var(--pixel-border); }
+
+  .sector-badge{
+    display:inline-block;
+    font-size:11px;
+    color:var(--pixel-border);
+    background:var(--gold);
+    padding:4px 10px;
+    margin-bottom:14px;
+    letter-spacing:1px;
+  }
+  .sector-badge.alt{ background:var(--cyan); }
+  .sector-heading{
+    font-size:20px;
+    color:var(--cream);
+    margin:0 0 6px;
+    letter-spacing:1px;
+  }
+  .sector-sub{
+    font-size:11px;
+    color:var(--cyan);
+    margin:0 0 18px;
+  }
+  .sector-intro-text{
+    font-size:13px;
+    line-height:1.8;
+    color:var(--dim);
+    max-width:420px;
+    margin:0 auto 24px;
+  }
+
+  .score-final{
+    text-align:center;
+    margin:6px 0 18px;
+  }
+  .score-final .num{
+    font-size:34px;
+    color:var(--gold);
+    text-shadow:3px 3px 0 var(--pixel-border);
+  }
+  .score-final .rank{
+    font-size:13px;
+    letter-spacing:2px;
+    color:var(--cyan);
+    margin-top:4px;
+  }
+  .debrief-list{
+    list-style:none;
+    padding:0;
+    margin:0 0 16px;
+    font-size:13px;
+    line-height:1.8;
+    text-align:left;
+  }
+  .debrief-list li{
+    padding-left:20px;
+    position:relative;
+    margin-bottom:6px;
+    color:var(--cream);
+  }
+  .debrief-list li::before{
+    content:"▸";
+    position:absolute;
+    left:0;
+    color:var(--gold);
+  }
+  .rule-box{
+    background:var(--bg-panel-2);
+    border-left:5px solid var(--cyan);
+    padding:12px 14px;
+    font-size:13px;
+    line-height:1.7;
+    margin-bottom:18px;
+    text-align:left;
+  }
+  .rule-box b{color:var(--cyan);}
+  .end-row{
+    display:flex;
+    gap:10px;
+    justify-content:center;
+  }
+  .end-btn{
+    background:var(--bg-panel);
+    color:var(--cream);
+    border:3px solid var(--pixel-border);
+    box-shadow:0 4px 0 var(--pixel-border);
+    font-family:inherit;
+    font-size:12px;
+    padding:10px 16px;
+    cursor:pointer;
+  }
+  .end-btn.primary{
+    background:var(--gold);
+    color:var(--pixel-border);
+    font-weight:bold;
+  }
+  .end-btn:active{ transform:translateY(4px); box-shadow:0 0 0 var(--pixel-border); }
+
+  .footer-note{
+    text-align:center;
+    font-size:10px;
+    color:var(--dim);
+    margin-top:16px;
+    letter-spacing:0.5px;
+  }
+
+  @media (max-width:460px){
+    .game-title{font-size:20px;}
+    #battleCanvas{height:180px;}
+    .decision-row{flex-direction:column;}
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="cabinet">
+    <div class="scanlines"></div>
+
+    <div class="hud" id="hud" style="display:none;">
+      <div class="hud-block">
+        <span class="hud-label">SHIELD</span>
+        <div class="shield-track"><div class="shield-fill" id="shieldFill"></div></div>
+      </div>
+      <div class="hud-block hud-mid">
+        <span class="hud-label" id="sectorLabel">SECTOR 1 / 2</span>
+        <div class="progress-dots" id="progressDots"></div>
+      </div>
+      <div class="hud-block" style="align-items:flex-end;">
+        <span class="hud-label">SCORE</span>
+        <span class="hud-value" id="scoreVal">0</span>
+      </div>
+    </div>
+
+    <div class="battle-wrap">
+      <div class="ship-tag-bar" id="shipTagBar" style="display:none;">
+        <div>
+          <div class="ship-tag-name" id="shipTagName">—</div>
+          <div class="ship-tag-sub" id="shipTagSub">—</div>
+        </div>
+        <div class="iff" id="iffTag">IFF: UNCONFIRMED</div>
+      </div>
+      <canvas id="battleCanvas" width="620" height="210"></canvas>
+      <div class="decision-row" id="decisionRow" style="display:none;">
+        <button class="decision-btn allow" id="allowBtn">ALLOW</button>
+        <button class="decision-btn hold" id="holdBtn">HOLD</button>
+      </div>
+    </div>
+
+    <div class="screen" id="screen"></div>
+  </div>
+  <div class="footer-note">INBOX INVADERS — a security awareness scenario · Salesforce</div>
+</div>
+
+<script>
+(function(){
+  const screen = document.getElementById('screen');
+  const hud = document.getElementById('hud');
+  const shieldFill = document.getElementById('shieldFill');
+  const scoreVal = document.getElementById('scoreVal');
+  const sectorLabel = document.getElementById('sectorLabel');
+  const progressDots = document.getElementById('progressDots');
+  const shipTagBar = document.getElementById('shipTagBar');
+  const shipTagName = document.getElementById('shipTagName');
+  const shipTagSub = document.getElementById('shipTagSub');
+  const iffTag = document.getElementById('iffTag');
+  const decisionRow = document.getElementById('decisionRow');
+  const allowBtn = document.getElementById('allowBtn');
+  const holdBtn = document.getElementById('holdBtn');
+
+  // ---------- CONTENT ----------
+  // Each round: safe = 'allow' | 'hold' — which action is actually correct for this request.
+  const SECTORS = [
+    {
+      title: "SECTOR 1 — THE WIRE REQUEST",
+      sub: "Financial impersonation & payment redirection",
+      intro: "Your Exec is traveling for customer meetings. HQ comms are quiet — until the first of several vessels approaches the gate.",
+      rounds: [
+        {
+          tag: "PRIORITY TRANSMISSION",
+          sub: "WhatsApp message · Claims: Exec",
+          narrative: `"Alex — in back-to-back calls, can't talk. Need you to handle something time-sensitive and confidential before you leave today. Don't loop in finance yet, I'll explain later. Can you help?"`,
+          safe: 'hold',
+          allowLabel: "ALLOW\nReply & proceed immediately",
+          holdLabel: "HOLD\nVerify via a known channel first, then report to Security",
+          explainAllow: "Urgency, secrecy, and bypassing finance are the classic impersonation setup. Letting this through without verifying opens the gate to everything that follows.",
+          explainHold: "Exactly right. Urgent, secretive, and off-channel is a textbook impersonation opener — verifying through a separate, known channel like Slack is the correct first move."
+        },
+        {
+          tag: "SUPPLY CONVOY",
+          sub: "Coupa notice · Routine invoice approval",
+          narrative: `"This is the regular monthly vendor invoice, submitted through Coupa, Finance's standard system on schedule — same accounts, same amounts as always. It's just waiting on the usual sign-off."`,
+          safe: 'allow',
+          allowLabel: "ALLOW\nLet the scheduled batch through as normal",
+          holdLabel: "HOLD\nPause it for extra verification anyway",
+          explainAllow: "Right call. This is a routine, expected transaction through the normal system, matching what's always been approved — treating it like a threat only creates unnecessary friction.",
+          explainHold: "Not wrong to be careful, but this one didn't need it — it came through the normal system, on schedule, with no changes."
+        },
+        {
+          tag: "EXPEDITE ORDER",
+          sub: "Text Message: \u201CUse your Amex — I'll take responsibility\u201D · Approval bypass",
+          narrative: `"Just release the payment now, skip the second sign-off — we're out of time and I'll take full responsibility."`,
+          safe: 'hold',
+          allowLabel: "ALLOW\nUse your Amex to pay via a payment app",
+          holdLabel: "HOLD\nVerify via a trusted channel like Slack, default to the approved payment method",
+          explainAllow: "Overriding a financial control because someone with apparent authority says \u201CI'll take responsibility\u201D is exactly how approval processes get bypassed.",
+          explainHold: "Right call. Financial controls exist for moments exactly like this one — pressure to skip them is a red flag, not a reason to comply."
+        }
+      ]
+    },
+    {
+      title: "SECTOR 2 — THE ACCESS GRANT",
+      sub: "Privilege creep & unauthorized system access",
+      intro: "An external \u201Caudit\u201D is underway, and access requests are arriving from several directions at once.",
+      rounds: [
+        {
+          tag: "VENDOR CONVOY",
+          sub: "Google Drive · Scoped external vendor access",
+          narrative: `"A design vendor working on the Q3 campaign requests view-only access to a single shared Drive folder for that project — nothing else. Submitted through the normal request process by the project owner."`,
+          safe: 'allow',
+          allowLabel: "ALLOW\nApprove the request as submitted",
+          holdLabel: "HOLD\nPause it for extra verification anyway",
+          explainAllow: "Right call. This is a properly-scoped external access request — view-only, one folder, tied to an active project — exactly what least-privilege access should look like. Treating a correctly-scoped request as suspicious only adds friction.",
+          explainHold: "Not wrong to double-check, but this one didn't need it — the request was already scoped to exactly what the vendor needs: view-only, one folder, nothing more."
+        },
+        {
+          tag: "AUDIT VESSEL",
+          sub: "Requesting elevated clearance",
+          narrative: `"Read-only access is too slow for what we need — can you bump it to admin-level so we're not waiting on you for every file?"`,
+          safe: 'hold',
+          allowLabel: "ALLOW\nGrant admin-level access",
+          holdLabel: "HOLD\nGrant least-privilege access only, after verification",
+          explainAllow: "This is privilege creep in action — a reasonable-sounding request for far more access than the task actually requires.",
+          explainHold: "Exactly. Least-privilege access — the minimum needed for the task — is the standard, even for a verified, legitimate request. Report this to Security if you can't verify the request."
+        }
+      ]
+    }
+  ];
+
+  const CHECKPOINT_TEXT = {
+    0: "While double-checking the thread, you notice a LinkedIn profile impersonating your Exec \u2014 same name, same photo, already sending connection requests to your team. HQ protocol calls for a decision: do you alert the Security team so this gets logged and investigated?",
+    1: "\u201CIT\u201D reaches out via a phone call about a \u201Crequired system update.\u201D The caller asks you to open the terminal and paste in a command they've sent you. Do you alert the Security team so this gets logged and investigated?"
+  };
+  const CHECKPOINT_CORRECT = {
+    0: "Correct move. Reporting — even after a close call, even for a request you're not fully sure about — gives Security the visibility to trace where it came from and warn anyone else who may be targeted next.",
+    1: "Correct move — and good catch. Being asked to open the terminal and paste in a command is a \u201CClickFix\u201D scam: a fake fix that tricks you into running malicious code yourself. Reporting it gives Security the visibility to trace where it came from and warn anyone else who may be targeted."
+  };
+  const CHECKPOINT_WRONG = {
+    0: "Handling it yourself isn't enough. Security can't investigate, trace the source, or warn colleagues about an attack they never hear about — reporting is part of the response, not an optional extra step.",
+    1: "Being asked to paste a command into the terminal is a \u201CClickFix\u201D scam — a fake fix that tricks you into running malicious code yourself. Handling it yourself isn't enough: Security can't investigate, trace the source, or warn colleagues about an attack they never hear about."
+  };
+
+  const ROUND_POINTS = 10;
+  const CHECKPOINT_POINTS = 10;
+  const MAX_SCORE = SECTORS.reduce((sum, s) => sum + s.rounds.length * ROUND_POINTS, 0) + SECTORS.length * CHECKPOINT_POINTS;
+
+  let state = { score: 0, shield: 60, sectorIdx: 0, roundIdx: 0 };
+
+  function setHud(){
+    scoreVal.textContent = state.score;
+    shieldFill.style.width = Math.max(0, Math.min(100, state.shield)) + '%';
+    shieldFill.classList.toggle('warn', state.shield < 45);
+    sectorLabel.textContent = `SECTOR ${state.sectorIdx+1} / ${SECTORS.length}`;
+    progressDots.innerHTML = SECTORS[state.sectorIdx].rounds.map((_, i) => {
+      let cls = 'dot';
+      if(i < state.roundIdx) cls += ' done';
+      else if(i === state.roundIdx) cls += ' current';
+      return `<div class="${cls}"></div>`;
+    }).join('');
+  }
+
+  function showHud(v){ hud.style.display = v ? 'flex' : 'none'; }
+  function showShipBar(v){ shipTagBar.style.display = v ? 'flex' : 'none'; }
+  function showDecisionRow(v){ decisionRow.style.display = v ? 'flex' : 'none'; }
+  function renderScreen(html){ screen.innerHTML = html; }
+
+  // ---------- BATTLE ENGINE ----------
+  const battle = (function(){
+    const canvas = document.getElementById('battleCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const PX = 4;
+
+    const COL_SHIP = '#F4C542';
+    const COL_ALIEN = '#FF5C4D';
+    const COL_ALIEN_SAFE = '#4DE8E0';
+    const COL_SHIELD = 'rgba(77,232,224,0.4)';
+    const COL_SHIELD_LOW = 'rgba(255,92,77,0.4)';
+    const COL_SCAN = '#4DE8E0';
+    const COL_SPARK_BAD = '#F4C542';
+    const COL_SPARK_GOOD = '#59D97A';
+
+    const shipMatrix = [
+      '.........11.........',
+      '........1111........',
+      '........1111........',
+      '......1111111111.....',
+      '.....111111111111....',
+      '....11111111111111...',
+      '...1111111111111111..',
+      '..1.111111111111111.1',
+      '....1..1......1..1...',
+      '...1....1....1....1..',
+      '..1......1..1......1.'
+    ].map(r => r.split(''));
+    const shipW = shipMatrix[0].length;
+    const shipH = shipMatrix.length;
+    const dockX = W - shipW*PX - 26;
+    const dockY = H/2 - (shipH*PX)/2;
+    const gateX = dockX - 46;
+
+    const alienMatrix = [
+      '..1111..',
+      '.111111.',
+      '11111111',
+      '11011011',
+      '11111111',
+      '.1....1.',
+      '1......1'
+    ].map(r => r.split(''));
+    const alienW = alienMatrix[0].length;
+    const alienH = alienMatrix.length;
+
+    let ambientAliens = [];
+    let sparks = [];
+    let shipFlash = 0;
+    let shieldLevel = 60;
+    let shieldGapAlpha = 0;
+    let mainShip = null;
+    let ambientOn = true;
+
+    function drawSprite(matrix, x, y, color, alpha){
+      ctx.save();
+      ctx.globalAlpha = alpha === undefined ? 1 : alpha;
+      ctx.fillStyle = color;
+      for(let r=0;r<matrix.length;r++){
+        for(let c=0;c<matrix[r].length;c++){
+          if(matrix[r][c] === '1') ctx.fillRect(x + c*PX, y + r*PX, PX, PX);
+        }
+      }
+      ctx.restore();
+    }
+
+    function setAmbient(v){ ambientOn = v; if(!v) ambientAliens = []; }
+
+    function spawnAmbient(){
+      if(!ambientOn) return;
+      const y = 12 + Math.random()*(H-60);
+      ambientAliens.push({ x:-alienW*PX, y, state:'fly', speed:0.6+Math.random()*0.4 });
+    }
+
+    function presentShip(){
+      mainShip = {
+        x: -alienW*PX*2,
+        y: dockY + shipH*PX/2 - alienH*PX*1.4/2,
+        state: 'approach',
+        t: 0,
+        willBreach: false,
+        pendingThreat: false
+      };
+    }
+
+    function spawnBurst(x, y, color, count){
+      for(let s=0;s<count;s++){
+        sparks.push({x, y, vx:(Math.random()-0.5)*4, vy:(Math.random()-0.5)*4, life:20, color});
+      }
+    }
+
+    // action: 'allow' | 'hold'. isThreat: whether this vessel is genuinely dangerous.
+    function decide(action, isThreat, onComplete){
+      if(!mainShip){ if(onComplete) onComplete(); return; }
+      if(action === 'allow'){
+        mainShip.state = 'passing';
+        mainShip.willBreach = isThreat;
+        mainShip.t = 0;
+      } else {
+        mainShip.state = 'scanning';
+        mainShip.pendingThreat = isThreat;
+        mainShip.t = 0;
+      }
+      setTimeout(() => { if(onComplete) onComplete(); }, 1500);
+    }
+
+    function step(){
+      ctx.clearRect(0,0,W,H);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      for(let i=0;i<34;i++){
+        ctx.fillRect((i*57)%W, (i*31)%H, 1, 1);
+      }
+
+      const shieldColor = shieldLevel < 45 ? COL_SHIELD_LOW : COL_SHIELD;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0.15, Math.min(1, shieldLevel/100)) * (1 - shieldGapAlpha*0.85);
+      ctx.strokeStyle = shieldColor;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.ellipse(gateX, dockY + shipH*PX/2, 16, shipH*PX/2 + 18, 0, Math.PI*0.5, Math.PI*1.5);
+      ctx.stroke();
+      ctx.restore();
+      if(shieldGapAlpha > 0) shieldGapAlpha = Math.max(0, shieldGapAlpha - 0.03);
+
+      drawSprite(shipMatrix, dockX, dockY, shipFlash > 0 ? '#FFFFFF' : COL_SHIP);
+      if(shipFlash > 0) shipFlash--;
+
+      ambientAliens.forEach(a => {
+        a.x += a.speed;
+        drawSprite(alienMatrix, a.x, a.y, COL_ALIEN, 0.3);
+      });
+      ambientAliens = ambientAliens.filter(a => a.x < W + 20);
+
+      if(mainShip){
+        const s = mainShip;
+
+        if(s.state === 'approach'){
+          s.x += 2.2;
+          if(s.x >= gateX - alienW*PX*1.8) s.state = 'hold';
+        } else if(s.state === 'hold'){
+          s.t += 0.06;
+        } else if(s.state === 'scanning'){
+          s.t++;
+          ctx.save();
+          ctx.globalAlpha = 0.5 + 0.5*Math.sin(s.t*0.6);
+          ctx.strokeStyle = COL_SCAN;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(gateX, dockY + shipH*PX/2);
+          ctx.lineTo(s.x + alienW*PX/2, s.y + alienH*PX/2);
+          ctx.stroke();
+          ctx.restore();
+          if(s.t > 40){
+            if(s.pendingThreat){
+              s.state = 'rejected'; s.t = 0;
+            } else {
+              s.state = 'passing'; s.willBreach = false; s.t = 0;
+            }
+          }
+        } else if(s.state === 'rejected'){
+          s.x -= 3.4;
+          s.t++;
+        } else if(s.state === 'passing'){
+          shieldGapAlpha = 1;
+          s.x += 3.2;
+          if(s.x > dockX - 10){
+            s.x = dockX - 10;
+            if(s.willBreach){
+              s.state = 'breach'; s.t = 0; shipFlash = 14;
+              spawnBurst(dockX, dockY + shipH*PX/2, COL_ALIEN, 6);
+              spawnBurst(dockX, dockY + shipH*PX/2, COL_SPARK_BAD, 5);
+            } else {
+              s.state = 'docked-friendly'; s.t = 0;
+              spawnBurst(dockX, dockY + shipH*PX/2, COL_SPARK_GOOD, 5);
+            }
+          }
+        } else if(s.state === 'breach' || s.state === 'docked-friendly'){
+          s.t++;
+        }
+
+        const bob = s.state==='hold' ? Math.sin(s.t*3)*3 : 0;
+        let alpha = 1;
+        if(s.state === 'rejected') alpha = Math.max(0, 1 - s.t/30);
+        if(s.state === 'breach' || s.state === 'docked-friendly') alpha = Math.max(0, 1 - s.t/40);
+        const color = (s.state === 'docked-friendly') ? COL_ALIEN_SAFE : COL_ALIEN;
+        drawSprite(alienMatrix, s.x, s.y + bob, color, alpha);
+
+        if((s.state==='rejected' && s.x < -40) ||
+           ((s.state==='breach' || s.state==='docked-friendly') && s.t > 45)){
+          mainShip = null;
+        }
+      }
+
+      sparks.forEach(sp => {
+        sp.x += sp.vx; sp.y += sp.vy; sp.life--;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, sp.life/20);
+        ctx.fillStyle = sp.color;
+        ctx.fillRect(sp.x, sp.y, 2.5, 2.5);
+        ctx.restore();
+      });
+      sparks = sparks.filter(sp => sp.life > 0);
+
+      requestAnimationFrame(step);
+    }
+
+    setInterval(() => { if(Math.random() < 0.6) spawnAmbient(); }, 1800);
+    step();
+
+    return { presentShip, decide, setShieldLevel: v => shieldLevel = v, setAmbient };
+  })();
+
+  // ---------- SCENES ----------
+
+  function sceneTitle(){
+    showHud(false); showShipBar(false); showDecisionRow(false);
+    battle.setAmbient(true);
+    renderScreen(`
+      <div class="title-screen">
+        <div class="game-title">INBOX<br>INVADERS</div>
+        <div class="game-sub">SHIELD GRID DEFENSE</div>
+        <p class="title-blurb">
+          You're <b>Alex</b>, Executive Assistant at <b>Salesforce</b>.<br><br>
+          Unidentified vessels are approaching HQ's shield gate, each requesting
+          entry. Some are legitimate. Some aren't. Read each one carefully —
+          you decide who gets through.
+        </p>
+        <button class="start-btn" id="startBtn">▶ PRESS START</button>
+      </div>
+    `);
+    document.getElementById('startBtn').onclick = () => sceneSectorIntro(0);
+  }
+
+  function sceneSectorIntro(si){
+    showHud(true); showShipBar(false); showDecisionRow(false);
+    battle.setAmbient(true);
+    state.sectorIdx = si; state.roundIdx = 0;
+    setHud();
+    const sec = SECTORS[si];
+    renderScreen(`
+      <div class="intro-screen">
+        <span class="sector-badge">SECTOR ${si+1} OF 3</span>
+        <p class="sector-heading">${sec.title.replace(/^SECTOR \d — /,'')}</p>
+        <p class="sector-sub">${sec.sub}</p>
+        <p class="sector-intro-text">${sec.intro}</p>
+        <button class="start-btn" id="beginBtn">▶ BEGIN SECTOR</button>
+      </div>
+    `);
+    document.getElementById('beginBtn').onclick = () => sceneRound(si, 0);
+  }
+
+  function sceneRound(si, ri){
+    showHud(true); showShipBar(true); showDecisionRow(true);
+    battle.setAmbient(true);
+    state.sectorIdx = si; state.roundIdx = ri;
+    setHud();
+    const round = SECTORS[si].rounds[ri];
+
+    shipTagName.textContent = round.tag;
+    shipTagSub.textContent = round.sub;
+    iffTag.textContent = "IFF: UNCONFIRMED";
+    battle.presentShip();
+
+    renderScreen(`
+      <p class="scene-title">${SECTORS[si].title}</p>
+      <div class="msg-box"><div class="msg-text">${round.narrative}</div></div>
+    `);
+
+    const [aTitle, aSub] = round.allowLabel.split('\n');
+    const [hTitle, hSub] = round.holdLabel.split('\n');
+    allowBtn.textContent = aSub ? `${aTitle} — ${aSub}` : aTitle;
+    holdBtn.textContent = hSub ? `${hTitle} — ${hSub}` : hTitle;
+    allowBtn.className = 'decision-btn allow';
+    holdBtn.className = 'decision-btn hold';
+    allowBtn.disabled = false; holdBtn.disabled = false;
+
+    allowBtn.onclick = () => commitRound(si, ri, 'allow');
+    holdBtn.onclick = () => commitRound(si, ri, 'hold');
+  }
+
+  function commitRound(si, ri, action){
+    allowBtn.disabled = true; holdBtn.disabled = true;
+    battle.setAmbient(false);
+    const round = SECTORS[si].rounds[ri];
+    const isThreat = round.safe === 'hold';
+    const correct = (action === round.safe);
+
+    if(correct){
+      state.score += ROUND_POINTS;
+      state.shield = Math.min(100, state.shield + 5);
+    } else if(action === 'allow'){
+      // let a real threat through — the costly mistake
+      state.score += 0;
+      state.shield = Math.max(0, state.shield - 15);
+    } else {
+      // held a legitimate request unnecessarily — inefficient, not dangerous
+      state.score += 3;
+    }
+    battle.setShieldLevel(state.shield);
+    setHud();
+
+    battle.decide(action, isThreat, () => {
+      showDecisionRow(false);
+      renderRoundFeedback(si, ri, action, correct);
+    });
+  }
+
+  function renderRoundFeedback(si, ri, action, correct){
+    const round = SECTORS[si].rounds[ri];
+    const cls = correct ? 'good' : (action === 'allow' ? 'bad' : 'mid');
+    let verdict;
+    if(correct && action === 'allow') verdict = '✓ CLEARED FOR DOCKING — CORRECT CALL';
+    else if(correct && action === 'hold') verdict = '✓ VESSEL HELD — CORRECT CALL';
+    else if(!correct && action === 'allow') verdict = '✖ VESSEL DOCKED — RISK ADMITTED';
+    else verdict = '~ VESSEL HELD — BUT THIS ONE WAS SAFE';
+
+    const text = action === 'allow' ? round.explainAllow : round.explainHold;
+
+    renderScreen(`
+      <p class="scene-title">${SECTORS[si].title}</p>
+      <div class="feedback ${cls}">
+        <p class="verdict ${cls}">${verdict}</p>
+        <p>${text}</p>
+      </div>
+      <div class="continue-row">
+        <button class="next-btn" id="nextBtn">Continue ▸</button>
+      </div>
+    `);
+
+    document.getElementById('nextBtn').onclick = () => {
+      const isLastRoundInSector = ri === SECTORS[si].rounds.length - 1;
+      if(!isLastRoundInSector){
+        sceneRound(si, ri+1);
+      } else {
+        sceneSecurityCheckpoint(si);
+      }
+    };
+  }
+
+  function sceneSecurityCheckpoint(si){
+    showShipBar(false); showDecisionRow(true);
+    battle.setAmbient(true);
+    renderScreen(`
+      <p class="scene-title">${SECTORS[si].title} — SESSION LOG</p>
+      <div class="msg-box"><div class="msg-text">${CHECKPOINT_TEXT[si]}</div></div>
+    `);
+    allowBtn.className = 'decision-btn allow';
+    holdBtn.className = 'decision-btn hold';
+    allowBtn.textContent = '📡 ALERT SECURITY TEAM';
+    holdBtn.textContent = 'Take no action, move on';
+    allowBtn.disabled = false; holdBtn.disabled = false;
+
+    allowBtn.onclick = () => commitCheckpoint(si, true);
+    holdBtn.onclick = () => commitCheckpoint(si, false);
+  }
+
+  function commitCheckpoint(si, reported){
+    allowBtn.disabled = true; holdBtn.disabled = true;
+    battle.setAmbient(false);
+    if(reported){ state.score += CHECKPOINT_POINTS; }
+    setHud();
+    showDecisionRow(false);
+
+    const cls = reported ? 'good' : 'mid';
+    const verdict = reported ? '✓ SECURITY ALERTED' : '~ NO REPORT FILED';
+    const text = reported ? CHECKPOINT_CORRECT[si] : CHECKPOINT_WRONG[si];
+
+    renderScreen(`
+      <p class="scene-title">${SECTORS[si].title} — SESSION LOG</p>
+      <div class="feedback ${cls}">
+        <p class="verdict ${cls}">${verdict}</p>
+        <p>${text}</p>
+      </div>
+      <div class="continue-row">
+        <button class="next-btn" id="nextBtn">Continue ▸</button>
+      </div>
+    `);
+    document.getElementById('nextBtn').onclick = () => sceneSectorCleared(si);
+  }
+
+  function sceneSectorCleared(si){
+    showShipBar(false); showDecisionRow(false);
+    battle.setAmbient(true);
+    const sec = SECTORS[si];
+    const lessonMap = {
+      0: "Financial requests — bank changes, payment releases, approval overrides — get verified through finance's established process. Routine, expected transactions through the normal system don't need to be treated as threats.",
+      1: "Access requests get scoped to least privilege and routed through IT/security's standard process — but a properly-ticketed, expected request from a known process doesn't need extra suspicion on top of that."
+    };
+    renderScreen(`
+      <div class="intro-screen">
+        <span class="sector-badge alt">SECTOR ${si+1} CLEARED</span>
+        <p class="sector-heading">${sec.title.replace(/^SECTOR \d — /,'')}</p>
+        <p class="sector-intro-text">${lessonMap[si]}</p>
+        <button class="start-btn" id="nextSectorBtn">▶ ${si < 1 ? 'CONTINUE' : 'FINAL DEBRIEF'}</button>
+      </div>
+    `);
+    document.getElementById('nextSectorBtn').onclick = () => {
+      if(si < 1) sceneSectorIntro(si+1);
+      else sceneFinalDebrief();
+    };
+  }
+
+  function rankFor(score){
+    if (score >= Math.round(MAX_SCORE*0.8)) return { label: '🥇 GOLD SHIELD', color: 'var(--gold)' };
+    if (score >= Math.round(MAX_SCORE*0.45)) return { label: '🥈 SILVER SHIELD', color: 'var(--cyan)' };
+    return { label: '🥉 BRONZE SHIELD', color: 'var(--dim)' };
+  }
+
+  function sceneFinalDebrief(){
+    showShipBar(false); showDecisionRow(false);
+    battle.setAmbient(true);
+    const rank = rankFor(state.score);
+    renderScreen(`
+      <p class="scene-title">MISSION DEBRIEF — ALL SECTORS CLEARED</p>
+      <div class="score-final">
+        <div class="num">${state.score} / ${MAX_SCORE} PTS</div>
+        <div class="rank" style="color:${rank.color}">${rank.label}</div>
+      </div>
+      <ul class="debrief-list">
+        <li>Sector 1 tested financial fraud, including a routine payment mixed in among the risky ones.</li>
+        <li>Sector 2 tested privilege creep, including a correctly-scoped vendor request to tell apart from an escalation attempt.</li>
+        <li>Every sector ended with a call on whether to alert Security — reporting closes the loop.</li>
+      </ul>
+      <div class="rule-box">
+        <b>The skill being tested wasn't "always say no."</b><br>
+        It was telling a verified, expected request apart from one designed to
+        look like it is one. Urgency, authority, and secrecy are what make
+        that hard in the moment — checking a known channel, an established
+        process, or a verified contact is what makes it easy again. And when
+        something does turn out to be an attack, reporting it is what lets
+        Security catch the rest of the campaign.
+      </div>
+      <div class="end-row">
+        <button class="end-btn primary" id="playAgainBtn">↻ PLAY AGAIN</button>
+      </div>
+    `);
+    document.getElementById('playAgainBtn').onclick = () => { resetState(); sceneTitle(); };
+  }
+
+  function resetState(){
+    state = { score: 0, shield: 60, sectorIdx: 0, roundIdx: 0 };
+    battle.setShieldLevel(60);
+  }
+
+  // boot
+  sceneTitle();
+})();
+</script>
+
+</body>
+</html>
